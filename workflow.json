@@ -1,0 +1,453 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "Poll_Inbox_Every_5_Minutes": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "referenceName": "office365"
+            }
+          },
+          "method": "get",
+          "path": "/Mail",
+          "queries": {
+            "fetchOnlyWithAttachment": false,
+            "folderPath": "Inbox",
+            "importance": "Any",
+            "includeAttachments": true,
+            "top": "@parameters('emailPollCount')",
+            "isRead": false
+          }
+        },
+        "recurrence": {
+          "frequency": "Minute",
+          "interval": 5
+        },
+        "runtimeConfiguration": {
+          "concurrency": {
+            "runs": 1
+          }
+        },
+        "splitOn": "@triggerBody()?['value']"
+      }
+    },
+    "actions": {
+
+      "Sanitise_MessageId": {
+        "type": "Compose",
+        "inputs": "@replace(replace(replace(replace(replace(replace(triggerBody()?['InternetMessageId'], '<', ''), '>', ''), '@', '-'), '.', '-'), ' ', '-'), '/', '-')",
+        "runAfter": {}
+      },
+
+      "Extract_Sender_Address": {
+        "type": "Compose",
+        "inputs": "@if(contains(triggerBody()?['From'], '<'), substring(triggerBody()?['From'], add(indexOf(triggerBody()?['From'], '<'), 1), sub(sub(length(triggerBody()?['From']), indexOf(triggerBody()?['From'], '<')), 2)), triggerBody()?['From'])",
+        "runAfter": {
+          "Sanitise_MessageId": [ "Succeeded" ]
+        }
+      },
+
+      "Build_Folder_Path": {
+        "type": "Compose",
+        "inputs": "@concat(parameters('stagingContainer'), '/', outputs('Sanitise_MessageId'), '_', formatDateTime(triggerBody()?['DateTimeReceived'], 'yyyyMMddHHmmss'), '/')",
+        "runAfter": {
+          "Extract_Sender_Address": [ "Succeeded" ]
+        }
+      },
+
+      "Check_Body_Size": {
+        "type": "If",
+        "expression": {
+          "and": [
+            {
+              "greater": [
+                "@length(coalesce(triggerBody()?['Body'], ''))",
+                200000
+              ]
+            }
+          ]
+        },
+        "actions": {
+          "Log_Large_Body_To_Monitor": {
+            "type": "Compose",
+            "inputs": {
+              "severity": "Critical",
+              "message": "LogicAppFailed - Email body exceeds size limit",
+              "messageId": "@outputs('Sanitise_MessageId')",
+              "senderAddress": "@outputs('Extract_Sender_Address')",
+              "emailSubject": "@triggerBody()?['Subject']",
+              "reason": "Email body size exceeds 200KB Service Bus message limit"
+            },
+            "runAfter": {}
+          },
+          "Move_Large_Body_Email_To_Failed": {
+            "type": "ApiConnection",
+            "inputs": {
+              "host": {
+                "connection": {
+                  "referenceName": "office365"
+                }
+              },
+              "method": "post",
+              "path": "/Mail/Move/@{encodeURIComponent(triggerBody()?['Id'])}",
+              "body": {
+                "DestinationId": "@parameters('failedEmailsFolder')"
+              }
+            },
+            "runAfter": {
+              "Log_Large_Body_To_Monitor": [ "Succeeded" ]
+            }
+          },
+          "Terminate_Large_Body": {
+            "type": "Terminate",
+            "inputs": {
+              "runStatus": "Cancelled"
+            },
+            "runAfter": {
+              "Move_Large_Body_Email_To_Failed": [ "Succeeded" ]
+            }
+          }
+        },
+        "else": {
+          "actions": {}
+        },
+        "runAfter": {
+          "Build_Folder_Path": [ "Succeeded" ]
+        }
+      },
+
+      "Process_Each_Attachment": {
+        "type": "Foreach",
+        "foreach": "@coalesce(triggerBody()?['Attachments'], json('[]'))",
+        "actions": {
+
+          "Check_Attachment_Size": {
+            "type": "If",
+            "expression": {
+              "and": [
+                {
+                  "greater": [
+                    "@length(base64ToBinary(item()?['ContentBytes']))",
+                    "@mul(parameters('maxAttachmentSizeMB'), 1048576)"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "Log_Large_Attachment_To_Monitor": {
+                "type": "Compose",
+                "inputs": {
+                  "severity": "Critical",
+                  "message": "LogicAppFailed - Attachment exceeds size limit",
+                  "messageId": "@outputs('Sanitise_MessageId')",
+                  "senderAddress": "@outputs('Extract_Sender_Address')",
+                  "emailSubject": "@triggerBody()?['Subject']",
+                  "attachmentName": "@item()?['Name']",
+                  "reason": "@concat('Attachment size exceeds ', string(parameters('maxAttachmentSizeMB')), 'MB limit')"
+                },
+                "runAfter": {}
+              },
+              "Move_Large_Attachment_Email_To_Failed": {
+                "type": "ApiConnection",
+                "inputs": {
+                  "host": {
+                    "connection": {
+                      "referenceName": "office365"
+                    }
+                  },
+                  "method": "post",
+                  "path": "/Mail/Move/@{encodeURIComponent(triggerBody()?['Id'])}",
+                  "body": {
+                    "DestinationId": "@parameters('failedEmailsFolder')"
+                  }
+                },
+                "runAfter": {
+                  "Log_Large_Attachment_To_Monitor": [ "Succeeded" ]
+                }
+              },
+              "Terminate_Large_Attachment": {
+                "type": "Terminate",
+                "inputs": {
+                  "runStatus": "Cancelled"
+                },
+                "runAfter": {
+                  "Move_Large_Attachment_Email_To_Failed": [ "Succeeded" ]
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            },
+            "runAfter": {}
+          },
+
+          "Sanitise_Attachment_Filename": {
+            "type": "Compose",
+            "inputs": "@replace(replace(replace(replace(replace(replace(replace(item()?['Name'], ' ', '-'), '#', '-'), '&', '-'), '(', '-'), ')', '-'), '@', '-'), ',', '-')",
+            "runAfter": {
+              "Check_Attachment_Size": [ "Succeeded" ]
+            }
+          },
+
+          "Upload_Attachment_To_Blob": {
+            "type": "ApiConnection",
+            "inputs": {
+              "host": {
+                "connection": {
+                  "referenceName": "azureblob"
+                }
+              },
+              "method": "post",
+              "path": "/datasets/default/files",
+              "queries": {
+                "folderPath": "@concat('/', outputs('Build_Folder_Path'))",
+                "name": "@outputs('Sanitise_Attachment_Filename')",
+                "queryParametersSingleEncoded": true
+              },
+              "body": "@base64ToBinary(item()?['ContentBytes'])"
+            },
+            "runAfter": {
+              "Sanitise_Attachment_Filename": [ "Succeeded" ]
+            },
+            "retryPolicy": {
+              "type": "fixed",
+              "count": 3,
+              "interval": "PT10S"
+            }
+          },
+
+          "Check_Blob_Upload_Result": {
+            "type": "If",
+            "expression": {
+              "and": [
+                {
+                  "equals": [
+                    "@actions('Upload_Attachment_To_Blob')['status']",
+                    "Failed"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "Log_Blob_Upload_Failure_To_Monitor": {
+                "type": "Compose",
+                "inputs": {
+                  "severity": "Critical",
+                  "message": "LogicAppFailed - Blob upload failed after 3 retries",
+                  "messageId": "@outputs('Sanitise_MessageId')",
+                  "senderAddress": "@outputs('Extract_Sender_Address')",
+                  "emailSubject": "@triggerBody()?['Subject']",
+                  "attachmentName": "@outputs('Sanitise_Attachment_Filename')",
+                  "reason": "Failed to upload attachment to Azure Blob Storage after 3 retries"
+                },
+                "runAfter": {}
+              },
+              "Move_Blob_Failed_Email_To_Failed": {
+                "type": "ApiConnection",
+                "inputs": {
+                  "host": {
+                    "connection": {
+                      "referenceName": "office365"
+                    }
+                  },
+                  "method": "post",
+                  "path": "/Mail/Move/@{encodeURIComponent(triggerBody()?['Id'])}",
+                  "body": {
+                    "DestinationId": "@parameters('failedEmailsFolder')"
+                  }
+                },
+                "runAfter": {
+                  "Log_Blob_Upload_Failure_To_Monitor": [ "Succeeded" ]
+                }
+              },
+              "Terminate_Blob_Upload_Failed": {
+                "type": "Terminate",
+                "inputs": {
+                  "runStatus": "Failed"
+                },
+                "runAfter": {
+                  "Move_Blob_Failed_Email_To_Failed": [ "Succeeded" ]
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            },
+            "runAfter": {
+              "Upload_Attachment_To_Blob": [ "Succeeded", "Failed" ]
+            }
+          }
+        },
+        "runAfter": {
+          "Check_Body_Size": [ "Succeeded" ]
+        }
+      },
+
+      "Build_Service_Bus_Payload": {
+        "type": "Compose",
+        "inputs": {
+          "MessageId": "@outputs('Sanitise_MessageId')",
+          "SenderAddress": "@outputs('Extract_Sender_Address')",
+          "EmailSubject": "@triggerBody()?['Subject']",
+          "EmailBody": "@triggerBody()?['Body']",
+          "EmailAttachmentPath": "@if(empty(coalesce(triggerBody()?['Attachments'], json('[]'))), null, outputs('Build_Folder_Path'))",
+          "EmailStatus": null,
+          "EmailStatusReason": null,
+          "SendDateTime": "@triggerBody()?['DateTimeReceived']",
+          "CreatedDateTime": null
+        },
+        "runAfter": {
+          "Process_Each_Attachment": [ "Succeeded" ]
+        }
+      },
+
+      "Send_To_Service_Bus": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "referenceName": "servicebus"
+            }
+          },
+          "method": "post",
+          "path": "@concat('/', encodeURIComponent(parameters('serviceBusQueueName')), '/messages')",
+          "body": {
+            "ContentData": "@base64(string(outputs('Build_Service_Bus_Payload')))",
+            "ContentType": "application/json"
+          }
+        },
+        "runAfter": {
+          "Build_Service_Bus_Payload": [ "Succeeded" ]
+        },
+        "retryPolicy": {
+          "type": "fixed",
+          "count": 3,
+          "interval": "PT10S"
+        }
+      },
+
+      "Check_Service_Bus_Result": {
+        "type": "If",
+        "expression": {
+          "and": [
+            {
+              "equals": [
+                "@actions('Send_To_Service_Bus')['status']",
+                "Failed"
+              ]
+            }
+          ]
+        },
+        "actions": {
+          "Log_ServiceBus_Failure_To_Monitor": {
+            "type": "Compose",
+            "inputs": {
+              "severity": "Critical",
+              "message": "LogicAppFailed - Service Bus send failed after 3 retries",
+              "messageId": "@outputs('Sanitise_MessageId')",
+              "senderAddress": "@outputs('Extract_Sender_Address')",
+              "emailSubject": "@triggerBody()?['Subject']",
+              "reason": "Failed to send message to Service Bus after 3 retries"
+            },
+            "runAfter": {}
+          },
+          "Move_ServiceBus_Failed_Email_To_Failed": {
+            "type": "ApiConnection",
+            "inputs": {
+              "host": {
+                "connection": {
+                  "referenceName": "office365"
+                }
+              },
+              "method": "post",
+              "path": "/Mail/Move/@{encodeURIComponent(triggerBody()?['Id'])}",
+              "body": {
+                "DestinationId": "@parameters('failedEmailsFolder')"
+              }
+            },
+            "runAfter": {
+              "Log_ServiceBus_Failure_To_Monitor": [ "Succeeded" ]
+            }
+          },
+          "Terminate_ServiceBus_Failed": {
+            "type": "Terminate",
+            "inputs": {
+              "runStatus": "Failed"
+            },
+            "runAfter": {
+              "Move_ServiceBus_Failed_Email_To_Failed": [ "Succeeded" ]
+            }
+          }
+        },
+        "else": {
+          "actions": {}
+        },
+        "runAfter": {
+          "Send_To_Service_Bus": [ "Succeeded", "Failed" ]
+        }
+      },
+
+      "Mark_Email_As_Read": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "referenceName": "office365"
+            }
+          },
+          "method": "patch",
+          "path": "/Mail/@{encodeURIComponent(triggerBody()?['Id'])}",
+          "body": {
+            "IsRead": true
+          }
+        },
+        "runAfter": {
+          "Check_Service_Bus_Result": [ "Succeeded" ]
+        }
+      },
+
+      "Log_Success_To_Monitor": {
+        "type": "Compose",
+        "inputs": {
+          "severity": "Info",
+          "message": "Email successfully processed",
+          "messageId": "@outputs('Sanitise_MessageId')",
+          "senderAddress": "@outputs('Extract_Sender_Address')",
+          "emailSubject": "@triggerBody()?['Subject']",
+          "attachmentCount": "@length(coalesce(triggerBody()?['Attachments'], json('[]')))",
+          "stagingFolder": "@outputs('Build_Folder_Path')"
+        },
+        "runAfter": {
+          "Mark_Email_As_Read": [ "Succeeded" ]
+        }
+      }
+    },
+
+    "parameters": {
+      "emailPollCount": {
+        "type": "int",
+        "defaultValue": 50
+      },
+      "maxAttachmentSizeMB": {
+        "type": "int",
+        "defaultValue": 25
+      },
+      "stagingContainer": {
+        "type": "string",
+        "defaultValue": "email-staging"
+      },
+      "serviceBusQueueName": {
+        "type": "string",
+        "defaultValue": ""
+      },
+      "failedEmailsFolder": {
+        "type": "string",
+        "defaultValue": "FailedEmails"
+      }
+    }
+  },
+  "kind": "Stateful"
+}

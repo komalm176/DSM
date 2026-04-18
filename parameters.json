@@ -1,0 +1,17 @@
+{
+  "emailPollCount": {
+    "value": 50
+  },
+  "maxAttachmentSizeMB": {
+    "value": 25
+  },
+  "stagingContainer": {
+    "value": "email-staging"
+  },
+  "serviceBusQueueName": {
+    "value": "<YOUR-SERVICE-BUS-QUEUE-NAME>"
+  },
+  "failedEmailsFolder": {
+    "value": "FailedEmails"
+  }
+}

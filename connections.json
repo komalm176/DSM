@@ -1,0 +1,40 @@
+{
+  "managedApiConnections": {
+    "office365": {
+      "api": {
+        "id": "/subscriptions/@appsetting('WORKFLOWS_SUBSCRIPTION_ID')/providers/Microsoft.Web/locations/@appsetting('WORKFLOWS_LOCATION_NAME')/managedApis/office365"
+      },
+      "connection": {
+        "id": "/subscriptions/@appsetting('WORKFLOWS_SUBSCRIPTION_ID')/resourceGroups/@appsetting('WORKFLOWS_RESOURCE_GROUP_NAME')/providers/Microsoft.Web/connections/office365"
+      },
+      "connectionRuntimeUrl": "@appsetting('OFFICE365_CONNECTION_RUNTIME_URL')",
+      "authentication": {
+        "type": "ManagedServiceIdentity"
+      }
+    },
+    "servicebus": {
+      "api": {
+        "id": "/subscriptions/@appsetting('WORKFLOWS_SUBSCRIPTION_ID')/providers/Microsoft.Web/locations/@appsetting('WORKFLOWS_LOCATION_NAME')/managedApis/servicebus"
+      },
+      "connection": {
+        "id": "/subscriptions/@appsetting('WORKFLOWS_SUBSCRIPTION_ID')/resourceGroups/@appsetting('WORKFLOWS_RESOURCE_GROUP_NAME')/providers/Microsoft.Web/connections/servicebus"
+      },
+      "connectionRuntimeUrl": "@appsetting('SERVICEBUS_CONNECTION_RUNTIME_URL')",
+      "authentication": {
+        "type": "ManagedServiceIdentity"
+      }
+    },
+    "azureblob": {
+      "api": {
+        "id": "/subscriptions/@appsetting('WORKFLOWS_SUBSCRIPTION_ID')/providers/Microsoft.Web/locations/@appsetting('WORKFLOWS_LOCATION_NAME')/managedApis/azureblob"
+      },
+      "connection": {
+        "id": "/subscriptions/@appsetting('WORKFLOWS_SUBSCRIPTION_ID')/resourceGroups/@appsetting('WORKFLOWS_RESOURCE_GROUP_NAME')/providers/Microsoft.Web/connections/azureblob"
+      },
+      "connectionRuntimeUrl": "@appsetting('AZUREBLOB_CONNECTION_RUNTIME_URL')",
+      "authentication": {
+        "type": "ManagedServiceIdentity"
+      }
+    }
+  }
+}
