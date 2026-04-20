@@ -8,3 +8,6 @@ Get-ChildItem -Path "C:\Users\KomalMehetre\source\repos\DSMTest\LogicApp\email-i
 
 Add-Type -Assembly System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::OpenRead("C:\Users\KomalMehetre\source\repos\DSMTest\LogicApp\deploy.zip").Entries | Select-Object FullName
+
+
+Compress-Archive -Path "C:\Users\KomalMehetre\source\repos\DSMTest\LogicApp\email-ingestion-logic\connections.json", "C:\Users\KomalMehetre\source\repos\DSMTest\LogicApp\email-ingestion-logic\host.json", "C:\Users\KomalMehetre\source\repos\DSMTest\LogicApp\email-ingestion-logic\email-ingestion-workflow" -DestinationPath "C:\Users\KomalMehetre\source\repos\DSMTest\LogicApp\deploy.zip" -Force
