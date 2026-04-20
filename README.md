@@ -1,1 +1,3 @@
 # DSM
+
+az rest --method post --uri "https://management.azure.com/subscriptions/c7fd7250-bb98-4ce0-bf7e-deba223c1151/resourceGroups/rg-eus2-datalake-dev-01/providers/Microsoft.Web/sites/logic-eus2-dev-filescheduler-01/hostruntime/runtime/webhooks/workflow/api/management/workflows/email-ingestion-workflow/triggers/Poll_Inbox_Every_5_Minutes/listCallbackUrl?api-version=2024-04-01"
