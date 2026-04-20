@@ -1,5 +1,15 @@
 # DSM
 
+
+az webapp config appsettings set --name logic-eus2-dev-filescheduler-01 --resource-group rg-eus2-datalake-dev-01 --settings WEBSITE_RUN_FROM_PACKAGE=0
+
+
+az webapp restart --name logic-eus2-dev-filescheduler-01 --resource-group rg-eus2-datalake-dev-01
+
+
+
+
+
 az webapp config appsettings list --name logic-eus2-dev-filescheduler-01 --resource-group rg-eus2-datalake-dev-01
 
 
