@@ -1,0 +1,18 @@
+"Send_To_Service_Bus": {
+  "type": "ServiceProvider",
+  "inputs": {
+    "parameters": {
+      "entityName": "@parameters('serviceBusQueueName')",
+      "message": {
+        "contentData": "@base64(string(createObject('messageId', outputs('Sanitise_MessageId'), 'emailSubject', triggerBody()?['Subject'], 'emailBody', triggerBody()?['Body'], 'senderAddress', outputs('Extract_Sender_Address'), 'emailSentDateTime', triggerBody()?['DateTimeSent'], 'emailCreatedDateTime', triggerBody()?['DateTimeCreated'], 'blobFolderPath', outputs('Build_Folder_Path'))))",
+        "contentType": "application/json"
+      }
+    },
+    "serviceProviderConfiguration": {
+      "connectionName": "serviceBus",
+      "operationId": "sendMessage",
+      "serviceProviderId": "/serviceProviders/serviceBus"
+    }
+  },
+  "runAfter": {
+    "Mark_Email_As_Read": [ "Succeeded" ]
