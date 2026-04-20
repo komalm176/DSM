@@ -1,4 +1,12 @@
-# DSM
+# DSm
+
+az logicapp deployment source config-zip `
+  --name logic-eus2-dev-filescheduler-01 `
+  --resource-group rg-eus2-datalake-dev-01 `
+  --subscription c7fd7250-bb98-4ce0-bf7e-deba223c1151 `
+  --src "C:\Users\KomalMehetre\source\repos\DSMTest\LogicApp\deploy.zip"
+
+
 
 
 az webapp config appsettings set --name logic-eus2-dev-filescheduler-01 --resource-group rg-eus2-datalake-dev-01 --settings WEBSITE_RUN_FROM_PACKAGE=0
